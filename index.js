@@ -3,6 +3,8 @@ require("dotenv").config();
 const { MongoClient } = require("mongodb");
 const cors = require("cors");
 const { ObjectId } = require("mongodb");
+const multer = require("multer");
+const upload = multer({ dest: "uploads/" });
 
 require("dotenv").config();
 const app = express();
@@ -19,6 +21,7 @@ async function run() {
     await client.connect();
     const database = client.db("grillz");
     const userCollection = database.collection("food");
+    const keyCollection = database.collection("key");
     console.log("connected");
 
     app.post("/food", async (req, res) => {
@@ -35,21 +38,88 @@ async function run() {
 
     //delete
 
+    const { ObjectId } = require("mongodb");
+
     app.delete("/food/:id", async (req, res) => {
       const id = req.params.id;
 
-      // Make sure the id is a valid ObjectId before proceeding
       if (!ObjectId.isValid(id)) {
-        return res.status(400).send({ message: "Invalid ID format" });
+        return res.status(400).json({ error: "Invalid ID format" });
       }
 
-      const query = { _id: new ObjectId(id) }; // Use `new ObjectId(id)` if necessary
-      const result = await userCollection.deleteOne(query);
+      const query = { _id: new ObjectId(id) };
 
-      if (result.deletedCount === 1) {
-        res.send({ success: true, message: "Food item deleted successfully!" });
-      } else {
-        res.status(404).send({ message: "Food item not found" });
+      try {
+        const result = await userCollection.deleteOne(query);
+        if (result.deletedCount === 1) {
+          console.log("Item deleted:", result);
+          res.json({ message: "Item deleted successfully", result });
+        } else {
+          res.status(404).json({ error: "Item not found" });
+        }
+      } catch (error) {
+        console.error("Error deleting item:", error);
+        res.status(500).json({ error: "Failed to delete item" });
+      }
+    });
+    // Specify the destination folder for uploaded files
+
+    app.put("/food/:id", async (req, res) => {
+      const id = req.params.id;
+      const { image, foodName, foodPrice, description } = req.body;
+
+      try {
+        const result = await userCollection.updateOne(
+          { _id: new ObjectId(id) }, // Filter by ID
+          {
+            $set: {
+              image: image,
+              foodName: foodName,
+              foodPrice: foodPrice,
+              description: description,
+            },
+          }
+        );
+
+        if (result.modifiedCount > 0) {
+          res.status(200).json({
+            status: "success",
+            message: "Food item updated successfully",
+          });
+        } else {
+          res.status(404).json({
+            status: "failure",
+            message: "Food item not found or no changes made",
+          });
+        }
+      } catch (error) {
+        console.error("Error updating food item:", error);
+        res.status(500).json({
+          status: "error",
+          message: "An error occurred while updating the food item",
+        });
+      }
+    });
+
+    app.post("/key", async (req, res) => {
+      const newUser = req.body;
+      const result = await keyCollection.insertOne(newUser);
+      res.json(result);
+    });
+
+    app.get("/key", async (req, res) => {
+      try {
+        // Fetch the first document in the collection
+        const keyDocument = await keyCollection.findOne({});
+
+        if (keyDocument) {
+          res.status(200).json(keyDocument);
+        } else {
+          res.status(404).json({ message: "Key not found" });
+        }
+      } catch (error) {
+        console.error("Error fetching key:", error);
+        res.status(500).json({ message: "Server error" });
       }
     });
   } finally {
